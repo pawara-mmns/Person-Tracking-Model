@@ -33,16 +33,16 @@ export function Home() {
             </div>
           </div>
           <span className="hidden rounded-full border border-white/8 bg-white/3 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400 sm:block">
-            Phase 02
+            Phase 03
           </span>
         </header>
 
         <section className="flex flex-1 flex-col justify-center py-10 sm:py-14" aria-labelledby="camera-heading">
           <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300/80">Canvas output</p>
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300/80">AI vision output</p>
               <h2 id="camera-heading" className="text-2xl font-semibold tracking-[-0.025em] text-white sm:text-3xl">
-                Real-time renderer
+                Real-time hand tracking
               </h2>
             </div>
             <CameraStatus status={status} />
@@ -70,21 +70,21 @@ export function Home() {
         <footer className="grid gap-5 border-t border-white/8 pt-7 sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="font-mono text-xs text-emerald-300">02</span>
-              <h2 className="text-sm font-semibold text-zinc-200">Real-time canvas rendering</h2>
+              <span className="font-mono text-xs text-emerald-300">03</span>
+              <h2 className="text-sm font-semibold text-zinc-200">AI hand landmark tracking</h2>
             </div>
             <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500">
-              Camera frames now flow through a browser-only canvas pipeline prepared for future visual overlays.
+              MediaPipe tracks up to two hands and renders 21 landmarks per hand over the live canvas.
             </p>
           </div>
           <div className="flex flex-col gap-2 text-xs text-zinc-500 sm:items-end">
             <div className="flex items-center gap-2">
               <span className="size-1.5 rounded-full bg-zinc-600" />
-              AI tracking: Not enabled
+              Hand AI: MediaPipe Tasks
             </div>
             <div className="flex items-center gap-2">
               <span className="size-1.5 rounded-full bg-zinc-600" />
-              Segmentation: Not enabled
+              Gestures & segmentation: Not enabled
             </div>
           </div>
         </footer>
