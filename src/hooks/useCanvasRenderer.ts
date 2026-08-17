@@ -5,11 +5,16 @@ import type { CanvasStatus, RenderMetrics } from '../types/canvas'
 import type { HandConnection } from '../types/handTracking'
 import type { HandGestureMap } from '../types/gesture'
 import type {
+  InvisibilityRenderState,
+  InvisibilityRuntimeStatus,
+} from '../types/invisibility'
+import type {
   PersonSegmentationMask,
   SegmentationDebugMode,
 } from '../types/segmentation'
 import { drawHandTracking } from '../utils/drawHandTracking'
 import { PersonMaskRenderer } from '../utils/drawPersonSegmentation'
+import { InvisibilityCompositor } from '../utils/invisibilityCompositor'
 
 interface UseCanvasRendererOptions {
   stream: MediaStream | null
@@ -27,6 +32,9 @@ interface UseCanvasRendererOptions {
   ) => void
   segmentationMaskRef?: RefObject<PersonSegmentationMask | null>
   segmentationDebugModeRef?: RefObject<SegmentationDebugMode>
+  backgroundCanvasRef?: RefObject<HTMLCanvasElement | null>
+  invisibilityRenderStateRef?: RefObject<InvisibilityRenderState>
+  invisibilityRuntimeStatusRef?: RefObject<InvisibilityRuntimeStatus>
 }
 
 const FPS_SAMPLE_INTERVAL_MS = 750
@@ -53,11 +61,21 @@ export function useCanvasRenderer({
   processSegmentationFrame,
   segmentationMaskRef,
   segmentationDebugModeRef,
+  backgroundCanvasRef,
+  invisibilityRenderStateRef,
+  invisibilityRuntimeStatusRef,
 }: UseCanvasRendererOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | null>(null)
   const personMaskRendererRef = useRef<PersonMaskRenderer | null>(null)
+  const invisibilityCompositorRef = useRef<InvisibilityCompositor | null>(null)
+  const fallbackInvisibilityStatusRef = useRef<InvisibilityRuntimeStatus>({
+    maskFresh: false,
+    maskMotion: 0,
+    colorMatchActive: false,
+    colorMismatch: 0,
+  })
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>('idle')
   const [metrics, setMetrics] = useState<RenderMetrics>(INITIAL_METRICS)
 
@@ -83,14 +101,23 @@ export function useCanvasRenderer({
     }
 
     clearCanvas(canvas, context)
-    personMaskRendererRef.current ??= new PersonMaskRenderer()
+    try {
+      personMaskRendererRef.current ??= new PersonMaskRenderer()
+      invisibilityCompositorRef.current ??= new InvisibilityCompositor()
+    } catch (error) {
+      console.error('Unable to initialize the canvas processing pipeline:', error)
+      setCanvasStatus('error')
+      return
+    }
     const personMaskRenderer = personMaskRendererRef.current
+    const invisibilityCompositor = invisibilityCompositorRef.current
     setMetrics(INITIAL_METRICS)
 
     if (!stream || !isCameraActive) {
       video.pause()
       video.srcObject = null
       personMaskRenderer.clear()
+      invisibilityCompositor.clear()
       setCanvasStatus('idle')
       return
     }
@@ -100,6 +127,7 @@ export function useCanvasRenderer({
     let totalFrames = 0
     let framesInSample = 0
     let lastFpsSample = performance.now()
+    let compositorErrorReported = false
 
     video.srcObject = stream
     setCanvasStatus('waiting')
@@ -121,17 +149,49 @@ export function useCanvasRenderer({
           canvas.height = sourceHeight
         }
 
+        const handResult = processVideoFrame?.(video, timestamp)
+        processSegmentationFrame?.(video, timestamp)
+        const invisibilityState = invisibilityRenderStateRef?.current
+        let compositedFrame: HTMLCanvasElement | null = null
+        if (invisibilityState?.enabled) {
+          try {
+            compositedFrame = invisibilityCompositor.compose(
+              video,
+              segmentationMaskRef?.current ?? null,
+              backgroundCanvasRef?.current ?? null,
+              invisibilityState.backgroundVersion,
+              invisibilityState.quality,
+              invisibilityRuntimeStatusRef?.current ??
+                fallbackInvisibilityStatusRef.current,
+              canvas.width,
+              canvas.height,
+              timestamp,
+            )
+            compositorErrorReported = false
+          } catch (error) {
+            if (!compositorErrorReported) {
+              compositorErrorReported = true
+              console.error('Invisible Mode compositing failed; showing the live frame:', error)
+            }
+          }
+        }
+
         clearCanvas(canvas, context)
 
-        // Mirror only the camera frame. Restoring the context keeps future overlays unmirrored.
+        // AI, capture, and compositing stay in raw coordinates. Mirror the final
+        // camera/composite image once for the selfie display.
         context.save()
         context.translate(canvas.width, 0)
         context.scale(-1, 1)
-        context.drawImage(video, 0, 0, canvas.width, canvas.height)
+        context.drawImage(
+          compositedFrame ?? video,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        )
         context.restore()
 
-        const handResult = processVideoFrame?.(video, timestamp)
-        processSegmentationFrame?.(video, timestamp)
         personMaskRenderer.draw(
           context,
           segmentationMaskRef?.current ?? null,
@@ -140,7 +200,7 @@ export function useCanvasRenderer({
           canvas.height,
         )
 
-        if (handResult) {
+        if (handResult && invisibilityState?.showHandOverlay !== false) {
           drawHandTracking(
             context,
             handResult,
@@ -151,8 +211,6 @@ export function useCanvasRenderer({
             canvas.height,
           )
         }
-
-        // Future phases can draw segmentation masks and effects here.
 
         totalFrames += 1
         framesInSample += 1
@@ -224,11 +282,15 @@ export function useCanvasRenderer({
       if (video.srcObject === stream) video.srcObject = null
       clearCanvas(canvas, context)
       personMaskRenderer.clear()
+      invisibilityCompositor.clear()
     }
   }, [
+    backgroundCanvasRef,
     debugOverlayRef,
     gesturesRef,
     handConnectionsRef,
+    invisibilityRenderStateRef,
+    invisibilityRuntimeStatusRef,
     isCameraActive,
     processVideoFrame,
     processSegmentationFrame,
