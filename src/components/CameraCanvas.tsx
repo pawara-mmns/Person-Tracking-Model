@@ -62,6 +62,7 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
     processVideoFrame: handTracking.processVideoFrame,
     debugOverlayRef: handTracking.debugOverlayRef,
     handConnectionsRef: handTracking.handConnectionsRef,
+    gesturesRef: handTracking.gesturesRef,
   })
   const isRendering = canvasStatus === 'rendering'
   const placeholder = getPlaceholder(cameraStatus, canvasStatus, error)
@@ -142,6 +143,8 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
         handTrackingStatus={handTracking.status}
         handsDetected={handTracking.handsDetected}
         aiFps={handTracking.aiFps}
+        gestures={handTracking.gestures}
+        showGestureDebug={handTracking.debugOverlay}
       />
 
       <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -157,7 +160,7 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
           <span
             className={`size-1.5 rounded-full ${handTracking.debugOverlay ? 'bg-teal-300' : 'bg-zinc-600'}`}
           />
-          Debug overlay: {handTracking.debugOverlay ? 'On' : 'Off'}
+          Finger debug: {handTracking.debugOverlay ? 'On' : 'Off'}
         </button>
       </div>
 
