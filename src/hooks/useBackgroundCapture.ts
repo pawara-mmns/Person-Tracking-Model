@@ -15,9 +15,11 @@ import {
   calculatePersonCoverage,
   validateBackgroundScene,
 } from '../utils/backgroundValidation'
+import { BackgroundPlateAccumulator } from '../utils/backgroundPlate'
 
 interface UseBackgroundCaptureOptions {
   videoRef: RefObject<HTMLVideoElement | null>
+  backgroundCanvasRef: RefObject<HTMLCanvasElement | null>
   latestMaskRef: RefObject<PersonSegmentationMask | null>
   coverageHistoryRef: RefObject<PersonCoverageSample[]>
   isCameraActive: boolean
@@ -32,10 +34,13 @@ const INITIAL_STATE: BackgroundCaptureState = {
   countdown: null,
   metadata: null,
   message: null,
+  framesCaptured: 0,
+  totalFrames: 0,
 }
 
 export function useBackgroundCapture({
   videoRef,
+  backgroundCanvasRef,
   latestMaskRef,
   coverageHistoryRef,
   isCameraActive,
@@ -46,9 +51,10 @@ export function useBackgroundCapture({
 }: UseBackgroundCaptureOptions) {
   const [captureState, setCaptureStateValue] =
     useState<BackgroundCaptureState>(INITIAL_STATE)
-  const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const stateRef = useRef(captureState)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const captureCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const plateAccumulatorRef = useRef(new BackgroundPlateAccumulator())
   const cameraActiveRef = useRef(isCameraActive)
   const canvasStatusRef = useRef(canvasStatus)
   const segmentationStatusRef = useRef(segmentationStatus)
@@ -69,46 +75,54 @@ export function useBackgroundCapture({
     }
   }, [])
 
+  const clearWorkingBuffers = useCallback(() => {
+    plateAccumulatorRef.current.clear()
+    const canvas = captureCanvasRef.current
+    if (canvas) {
+      canvas.width = 1
+      canvas.height = 1
+    }
+  }, [])
+
   const clearStoredCanvas = useCallback(() => {
     const canvas = backgroundCanvasRef.current
     if (!canvas) return
     canvas.width = 1
     canvas.height = 1
-  }, [])
+  }, [backgroundCanvasRef])
 
   const cancelCapture = useCallback(() => {
     const isPending =
       stateRef.current.status === 'countdown' ||
       stateRef.current.status === 'validating'
     if (!isPending) return
-
     clearTimer()
+    clearWorkingBuffers()
     setCaptureState({
-      status: 'not-captured',
-      countdown: null,
-      metadata: null,
+      ...INITIAL_STATE,
       message: 'Background capture cancelled.',
     })
-  }, [clearTimer, setCaptureState])
+  }, [clearTimer, clearWorkingBuffers, setCaptureState])
 
   const clearBackground = useCallback(() => {
     clearTimer()
+    clearWorkingBuffers()
     clearStoredCanvas()
     setCaptureState(INITIAL_STATE)
-  }, [clearStoredCanvas, clearTimer, setCaptureState])
+  }, [clearStoredCanvas, clearTimer, clearWorkingBuffers, setCaptureState])
 
   const failCapture = useCallback(
     (message: string) => {
       clearTimer()
+      clearWorkingBuffers()
       clearStoredCanvas()
       setCaptureState({
+        ...INITIAL_STATE,
         status: 'failed',
-        countdown: null,
-        metadata: null,
         message,
       })
     },
-    [clearStoredCanvas, clearTimer, setCaptureState],
+    [clearStoredCanvas, clearTimer, clearWorkingBuffers, setCaptureState],
   )
 
   const startCapture = useCallback(() => {
@@ -133,32 +147,27 @@ export function useBackgroundCapture({
     }
 
     clearStoredCanvas()
+    clearWorkingBuffers()
     let remaining = BACKGROUND_CAPTURE_CONFIG.countdownSeconds
     setCaptureState({
       status: 'countdown',
       countdown: remaining,
       metadata: null,
       message: 'Please move completely out of the camera frame.',
+      framesCaptured: 0,
+      totalFrames: BACKGROUND_CAPTURE_CONFIG.backgroundFrameCount,
     })
 
-    const finishCapture = () => {
+    const captureNextFrame = () => {
       timerRef.current = null
-      if (
-        !cameraActiveRef.current ||
-        canvasStatusRef.current !== 'rendering'
-      ) {
-        failCapture('Background capture was cancelled because the camera stopped.')
-        return
-      }
-      if (segmentationStatusRef.current !== 'active') {
-        failCapture('Background capture requires active person segmentation.')
-        return
-      }
-
       const activeVideo = videoRef.current
       const latestMask = latestMaskRef.current
       const now = performance.now()
+      const validation = validateBackgroundScene(coverageHistoryRef.current, now)
       if (
+        !cameraActiveRef.current ||
+        canvasStatusRef.current !== 'rendering' ||
+        segmentationStatusRef.current !== 'active' ||
         !activeVideo ||
         activeVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA ||
         activeVideo.videoWidth <= 0 ||
@@ -167,39 +176,78 @@ export function useBackgroundCapture({
         now - latestMask.timestampMs >
           BACKGROUND_CAPTURE_CONFIG.maximumSampleAgeMs
       ) {
-        failCapture('A recent segmentation mask is unavailable. Please try again.')
+        failCapture('Background capture was interrupted because the camera or segmentation became unavailable.')
         return
       }
-
-      const validation = validateBackgroundScene(
-        coverageHistoryRef.current,
-        now,
-      )
-      const latestCoverage = calculatePersonCoverage(latestMask)
       if (
         !validation.sceneClear ||
-        latestCoverage > BACKGROUND_CAPTURE_CONFIG.personCoverageThreshold
+        calculatePersonCoverage(latestMask) >
+          BACKGROUND_CAPTURE_CONFIG.personCoverageThreshold
       ) {
-        failCapture(
-          'Background capture failed. Person detected in frame—move completely out and try again.',
-        )
+        failCapture('Background capture interrupted. Person detected during capture.')
         return
       }
 
       const width = activeVideo.videoWidth
       const height = activeVideo.videoHeight
-      const backgroundCanvas =
-        backgroundCanvasRef.current ?? document.createElement('canvas')
-      const context = backgroundCanvas.getContext('2d', { alpha: false })
+      const captureCanvas =
+        captureCanvasRef.current ?? document.createElement('canvas')
+      if (
+        captureCanvas.width !== width ||
+        captureCanvas.height !== height
+      ) {
+        captureCanvas.width = width
+        captureCanvas.height = height
+      }
+      captureCanvasRef.current = captureCanvas
+      const context = captureCanvas.getContext('2d', {
+        alpha: false,
+        willReadFrequently: true,
+      })
       if (!context) {
-        failCapture('The browser could not create the background capture canvas.')
+        failCapture('The browser could not create the background averaging canvas.')
         return
       }
 
-      backgroundCanvas.width = width
-      backgroundCanvas.height = height
-      context.drawImage(activeVideo, 0, 0, width, height)
+      try {
+        context.drawImage(activeVideo, 0, 0, width, height)
+        const frame = context.getImageData(0, 0, width, height).data
+        plateAccumulatorRef.current.addFrame(frame, width, height)
+      } catch (error) {
+        console.error('Unable to accumulate a clean background frame:', error)
+        failCapture('The browser could not read a camera frame for background averaging.')
+        return
+      }
+
+      const framesCaptured = stateRef.current.framesCaptured + 1
+      const totalFrames = BACKGROUND_CAPTURE_CONFIG.backgroundFrameCount
+      if (framesCaptured < totalFrames) {
+        setCaptureState({
+          status: 'validating',
+          countdown: null,
+          metadata: null,
+          message: `Capturing clean background... ${framesCaptured} / ${totalFrames} frames`,
+          framesCaptured,
+          totalFrames,
+        })
+        timerRef.current = setTimeout(
+          captureNextFrame,
+          BACKGROUND_CAPTURE_CONFIG.backgroundFrameIntervalMs,
+        )
+        return
+      }
+
+      const backgroundCanvas =
+        backgroundCanvasRef.current ?? document.createElement('canvas')
+      try {
+        plateAccumulatorRef.current.writeAverage(backgroundCanvas)
+      } catch (error) {
+        console.error('Unable to finalize the averaged background plate:', error)
+        failCapture('The browser could not create the averaged background plate.')
+        return
+      }
       backgroundCanvasRef.current = backgroundCanvas
+      clearWorkingBuffers()
       setCaptureState({
         status: 'captured',
         countdown: null,
@@ -207,9 +255,25 @@ export function useBackgroundCapture({
           width,
           height,
           capturedAt: Date.now(),
+          frameCount: totalFrames,
         },
-        message: 'Background captured successfully.',
+        message: `Background captured successfully from ${totalFrames} averaged frames.`,
+        framesCaptured: totalFrames,
+        totalFrames,
       })
+    }
+
+    const beginFrameCollection = () => {
+      timerRef.current = null
+      setCaptureState({
+        status: 'validating',
+        countdown: null,
+        metadata: null,
+        message: `Capturing clean background... 0 / ${BACKGROUND_CAPTURE_CONFIG.backgroundFrameCount} frames`,
+        framesCaptured: 0,
+        totalFrames: BACKGROUND_CAPTURE_CONFIG.backgroundFrameCount,
+      })
+      captureNextFrame()
     }
 
     const advanceCountdown = () => {
@@ -230,6 +294,8 @@ export function useBackgroundCapture({
           countdown: remaining,
           metadata: null,
           message: 'Please move completely out of the camera frame.',
+          framesCaptured: 0,
+          totalFrames: BACKGROUND_CAPTURE_CONFIG.backgroundFrameCount,
         })
         timerRef.current = setTimeout(advanceCountdown, 1000)
         return
@@ -239,17 +305,21 @@ export function useBackgroundCapture({
         status: 'validating',
         countdown: null,
         metadata: null,
-        message: 'Capturing and validating the clean background...',
+        message: 'Waiting briefly for camera exposure to settle...',
+        framesCaptured: 0,
+        totalFrames: BACKGROUND_CAPTURE_CONFIG.backgroundFrameCount,
       })
       timerRef.current = setTimeout(
-        finishCapture,
-        BACKGROUND_CAPTURE_CONFIG.validationDelayMs,
+        beginFrameCollection,
+        BACKGROUND_CAPTURE_CONFIG.exposureSettlingDelayMs,
       )
     }
 
     timerRef.current = setTimeout(advanceCountdown, 1000)
   }, [
+    backgroundCanvasRef,
     clearStoredCanvas,
+    clearWorkingBuffers,
     coverageHistoryRef,
     failCapture,
     latestMaskRef,
@@ -265,10 +335,9 @@ export function useBackgroundCapture({
 
     if (!isCameraActive) {
       clearTimer()
+      clearWorkingBuffers()
       setCaptureState({
-        status: 'not-captured',
-        countdown: null,
-        metadata: null,
+        ...INITIAL_STATE,
         message: 'Background capture cancelled because the camera stopped.',
       })
     } else if (segmentationStatus === 'error') {
@@ -276,6 +345,7 @@ export function useBackgroundCapture({
     }
   }, [
     clearTimer,
+    clearWorkingBuffers,
     failCapture,
     isCameraActive,
     segmentationStatus,
@@ -291,14 +361,12 @@ export function useBackgroundCapture({
     ) {
       return
     }
-
     const resolutionMatches =
       captureState.metadata.width === activeWidth &&
       captureState.metadata.height === activeHeight
     const nextStatus: BackgroundCaptureStatus = resolutionMatches
       ? 'captured'
       : 'incompatible'
-
     if (nextStatus !== captureState.status) {
       setCaptureState({
         ...captureState,
@@ -316,7 +384,13 @@ export function useBackgroundCapture({
     setCaptureState,
   ])
 
-  useEffect(() => () => clearTimer(), [clearTimer])
+  useEffect(
+    () => () => {
+      clearTimer()
+      clearWorkingBuffers()
+    },
+    [clearTimer, clearWorkingBuffers],
+  )
 
   const validation = validateBackgroundScene(
     coverageHistoryRef.current,
