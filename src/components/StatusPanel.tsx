@@ -9,6 +9,7 @@ import type {
 import type { HandTrackingStatus } from '../types/handTracking'
 import type { SegmentationStatus } from '../types/segmentation'
 import type { BackgroundCaptureStatus } from '../types/background'
+import type { InvisibilityStatus } from '../types/invisibility'
 import { formatGestureName } from '../utils/gestureRecognition'
 
 interface StatusPanelProps {
@@ -27,6 +28,11 @@ interface StatusPanelProps {
   sceneClear: boolean
   backgroundStatus: BackgroundCaptureStatus
   backgroundCountdown: number | null
+  invisibilityStatus: InvisibilityStatus
+  maskQualityStable: boolean
+  colorMatchActive: boolean
+  temporalSmoothingActive: boolean
+  backgroundFrames: number
 }
 
 const CAMERA_LABELS: Record<CameraStatus, string> = {
@@ -66,6 +72,12 @@ const BACKGROUND_LABELS: Record<BackgroundCaptureStatus, string> = {
   captured: 'Ready',
   failed: 'Failed',
   incompatible: 'Recapture required',
+}
+
+const INVISIBILITY_LABELS: Record<InvisibilityStatus, string> = {
+  unavailable: 'Unavailable',
+  ready: 'Ready',
+  active: 'ACTIVE',
 }
 
 function StatusValue({ active, children }: { active?: boolean; children: ReactNode }) {
@@ -152,6 +164,11 @@ export function StatusPanel({
   sceneClear,
   backgroundStatus,
   backgroundCountdown,
+  invisibilityStatus,
+  maskQualityStable,
+  colorMatchActive,
+  temporalSmoothingActive,
+  backgroundFrames,
 }: StatusPanelProps) {
   const isRendering = canvasStatus === 'rendering'
   const isHandTracking = handTrackingStatus === 'active'
@@ -263,7 +280,41 @@ export function StatusPanel({
       <div className="flex items-center justify-between gap-4 lg:block">
         <span className="text-zinc-500">Invisible mode</span>
         <div className="lg:mt-1.5">
-          <StatusValue>Not enabled</StatusValue>
+          <StatusValue active={invisibilityStatus === 'active'}>
+            {INVISIBILITY_LABELS[invisibilityStatus]}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Mask quality</span>
+        <div className="lg:mt-1.5">
+          <StatusValue active={maskQualityStable}>
+            {maskQualityStable ? 'Stable' : 'Waiting'}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Color match</span>
+        <div className="lg:mt-1.5">
+          <StatusValue active={colorMatchActive}>
+            {colorMatchActive ? 'Active' : 'Idle'}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Temporal smoothing</span>
+        <div className="lg:mt-1.5">
+          <StatusValue active={temporalSmoothingActive}>
+            {temporalSmoothingActive ? 'Active' : 'Off'}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Background frames</span>
+        <div className="font-mono lg:mt-1.5">
+          <StatusValue active={backgroundFrames > 0}>
+            {backgroundFrames || '--'}
+          </StatusValue>
         </div>
       </div>
       </div>
