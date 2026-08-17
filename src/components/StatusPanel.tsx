@@ -8,6 +8,7 @@ import type {
 } from '../types/gesture'
 import type { HandTrackingStatus } from '../types/handTracking'
 import type { SegmentationStatus } from '../types/segmentation'
+import type { BackgroundCaptureStatus } from '../types/background'
 import { formatGestureName } from '../utils/gestureRecognition'
 
 interface StatusPanelProps {
@@ -23,6 +24,9 @@ interface StatusPanelProps {
   segmentationFps: number
   averagePersonConfidence: number
   personCoverage: number
+  sceneClear: boolean
+  backgroundStatus: BackgroundCaptureStatus
+  backgroundCountdown: number | null
 }
 
 const CAMERA_LABELS: Record<CameraStatus, string> = {
@@ -53,6 +57,15 @@ const SEGMENTATION_LABELS: Record<SegmentationStatus, string> = {
   ready: 'Ready',
   active: 'Active',
   error: 'Error',
+}
+
+const BACKGROUND_LABELS: Record<BackgroundCaptureStatus, string> = {
+  'not-captured': 'Not captured',
+  countdown: 'Capturing',
+  validating: 'Validating',
+  captured: 'Ready',
+  failed: 'Failed',
+  incompatible: 'Recapture required',
 }
 
 function StatusValue({ active, children }: { active?: boolean; children: ReactNode }) {
@@ -136,6 +149,9 @@ export function StatusPanel({
   segmentationFps,
   averagePersonConfidence,
   personCoverage,
+  sceneClear,
+  backgroundStatus,
+  backgroundCountdown,
 }: StatusPanelProps) {
   const isRendering = canvasStatus === 'rendering'
   const isHandTracking = handTrackingStatus === 'active'
@@ -221,7 +237,7 @@ export function StatusPanel({
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 lg:block">
-        <span className="text-zinc-500">Mask coverage</span>
+        <span className="text-zinc-500">Person coverage</span>
         <div className="font-mono lg:mt-1.5">
           <StatusValue active={personCoverage > 0}>
             {isSegmenting ? `${Math.round(personCoverage * 100)}%` : '--'}
@@ -229,9 +245,19 @@ export function StatusPanel({
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Scene clear</span>
+        <div className="lg:mt-1.5">
+          <StatusValue active={sceneClear}>{sceneClear ? 'Yes' : 'No'}</StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
         <span className="text-zinc-500">Background capture</span>
         <div className="lg:mt-1.5">
-          <StatusValue>Not enabled</StatusValue>
+          <StatusValue active={backgroundStatus === 'captured'}>
+            {backgroundStatus === 'countdown' && backgroundCountdown
+              ? `${BACKGROUND_LABELS[backgroundStatus]} in ${backgroundCountdown}`
+              : BACKGROUND_LABELS[backgroundStatus]}
+          </StatusValue>
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 lg:block">
