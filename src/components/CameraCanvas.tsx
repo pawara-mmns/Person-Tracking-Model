@@ -1,10 +1,12 @@
 import { useCanvasRenderer } from '../hooks/useCanvasRenderer'
 import { useHandTracking } from '../hooks/useHandTracking'
 import { usePersonSegmentation } from '../hooks/usePersonSegmentation'
+import { useBackgroundCapture } from '../hooks/useBackgroundCapture'
 import type { CameraStatus } from '../types/camera'
 import type { CanvasStatus } from '../types/canvas'
 import { StatusPanel } from './StatusPanel'
 import { SegmentationControls } from './SegmentationControls'
+import { BackgroundCaptureControls } from './BackgroundCaptureControls'
 
 interface CameraCanvasProps {
   stream: MediaStream | null
@@ -71,6 +73,16 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
     processSegmentationFrame: personSegmentation.processVideoFrame,
     segmentationMaskRef: personSegmentation.latestMaskRef,
     segmentationDebugModeRef: personSegmentation.debugModeRef,
+  })
+  const backgroundCapture = useBackgroundCapture({
+    videoRef,
+    latestMaskRef: personSegmentation.latestMaskRef,
+    coverageHistoryRef: personSegmentation.coverageHistoryRef,
+    isCameraActive: cameraStatus === 'active',
+    canvasStatus,
+    segmentationStatus: personSegmentation.status,
+    activeWidth: metrics.width,
+    activeHeight: metrics.height,
   })
   const isRendering = canvasStatus === 'rendering'
   const placeholder = getPlaceholder(cameraStatus, canvasStatus, error)
@@ -157,6 +169,24 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
         segmentationFps={personSegmentation.segmentationFps}
         averagePersonConfidence={personSegmentation.averagePersonConfidence}
         personCoverage={personSegmentation.personCoverage}
+        sceneClear={backgroundCapture.sceneClear}
+        backgroundStatus={backgroundCapture.status}
+        backgroundCountdown={backgroundCapture.countdown}
+      />
+
+      <BackgroundCaptureControls
+        status={backgroundCapture.status}
+        countdown={backgroundCapture.countdown}
+        metadata={backgroundCapture.metadata}
+        message={backgroundCapture.message}
+        backgroundCanvasRef={backgroundCapture.backgroundCanvasRef}
+        sceneClear={backgroundCapture.sceneClear}
+        personCoverage={personSegmentation.personCoverage}
+        canCapture={backgroundCapture.canCapture}
+        isCapturing={backgroundCapture.isCapturing}
+        onCapture={backgroundCapture.startCapture}
+        onCancel={backgroundCapture.cancelCapture}
+        onClear={backgroundCapture.clearBackground}
       />
 
       <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
