@@ -1,12 +1,21 @@
+import { useCallback, useRef } from 'react'
 import { useCanvasRenderer } from '../hooks/useCanvasRenderer'
 import { useHandTracking } from '../hooks/useHandTracking'
 import { usePersonSegmentation } from '../hooks/usePersonSegmentation'
 import { useBackgroundCapture } from '../hooks/useBackgroundCapture'
+import { useInvisibility } from '../hooks/useInvisibility'
+import { useCameraCapabilities } from '../hooks/useCameraCapabilities'
 import type { CameraStatus } from '../types/camera'
 import type { CanvasStatus } from '../types/canvas'
+import type {
+  InvisibilityRenderState,
+  InvisibilityRuntimeStatus,
+} from '../types/invisibility'
 import { StatusPanel } from './StatusPanel'
 import { SegmentationControls } from './SegmentationControls'
 import { BackgroundCaptureControls } from './BackgroundCaptureControls'
+import { InvisibilityControls } from './InvisibilityControls'
+import { InvisibilityDebugPanel } from './InvisibilityDebugPanel'
 
 interface CameraCanvasProps {
   stream: MediaStream | null
@@ -57,6 +66,25 @@ function getPlaceholder(cameraStatus: CameraStatus, canvasStatus: CanvasStatus, 
 }
 
 export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps) {
+  const cameraCapabilities = useCameraCapabilities(stream)
+  const backgroundCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  const invisibilityRenderStateRef = useRef<InvisibilityRenderState>({
+    enabled: false,
+    showHandOverlay: true,
+    backgroundVersion: null,
+    quality: {
+      featheringEnabled: true,
+      temporalSmoothingEnabled: true,
+      colorMatchingEnabled: true,
+      debugView: 'final',
+    },
+  })
+  const invisibilityRuntimeStatusRef = useRef<InvisibilityRuntimeStatus>({
+    maskFresh: false,
+    maskMotion: 0,
+    colorMatchActive: false,
+    colorMismatch: 0,
+  })
   const handTracking = useHandTracking({
     isCameraActive: cameraStatus === 'active',
   })
@@ -73,9 +101,13 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
     processSegmentationFrame: personSegmentation.processVideoFrame,
     segmentationMaskRef: personSegmentation.latestMaskRef,
     segmentationDebugModeRef: personSegmentation.debugModeRef,
+    backgroundCanvasRef,
+    invisibilityRenderStateRef,
+    invisibilityRuntimeStatusRef,
   })
   const backgroundCapture = useBackgroundCapture({
     videoRef,
+    backgroundCanvasRef,
     latestMaskRef: personSegmentation.latestMaskRef,
     coverageHistoryRef: personSegmentation.coverageHistoryRef,
     isCameraActive: cameraStatus === 'active',
@@ -84,6 +116,44 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
     activeWidth: metrics.width,
     activeHeight: metrics.height,
   })
+  const invisibility = useInvisibility({
+    isCameraActive: cameraStatus === 'active',
+    canvasStatus,
+    segmentationStatus: personSegmentation.status,
+    backgroundStatus: backgroundCapture.status,
+    backgroundWidth: backgroundCapture.metadata?.width ?? null,
+    backgroundHeight: backgroundCapture.metadata?.height ?? null,
+    backgroundCapturedAt: backgroundCapture.metadata?.capturedAt ?? null,
+    processingWidth: metrics.width,
+    processingHeight: metrics.height,
+    renderStateRef: invisibilityRenderStateRef,
+    runtimeStatusRef: invisibilityRuntimeStatusRef,
+  })
+  const handleToggleInvisible = useCallback(() => {
+    if (!invisibility.isEnabled && invisibility.isAvailable) {
+      personSegmentation.setDebugMode('off')
+    }
+    invisibility.toggleInvisible()
+  }, [invisibility, personSegmentation])
+  const handleCaptureBackground = useCallback(() => {
+    invisibility.disableInvisible()
+    backgroundCapture.startCapture()
+  }, [backgroundCapture, invisibility])
+  const handleClearBackground = useCallback(() => {
+    invisibility.disableInvisible()
+    backgroundCapture.clearBackground()
+  }, [backgroundCapture, invisibility])
+  const handleRawMaskDebug = useCallback(() => {
+    invisibility.setDebugView('final')
+    personSegmentation.setDebugMode('mask')
+  }, [invisibility, personSegmentation])
+  const handleInvisibilityDebugView = useCallback(
+    (view: Parameters<typeof invisibility.setDebugView>[0]) => {
+      personSegmentation.setDebugMode('off')
+      invisibility.setDebugView(view)
+    },
+    [invisibility, personSegmentation],
+  )
   const isRendering = canvasStatus === 'rendering'
   const placeholder = getPlaceholder(cameraStatus, canvasStatus, error)
 
@@ -172,6 +242,20 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
         sceneClear={backgroundCapture.sceneClear}
         backgroundStatus={backgroundCapture.status}
         backgroundCountdown={backgroundCapture.countdown}
+        invisibilityStatus={invisibility.status}
+        maskQualityStable={
+          invisibility.status === 'active' &&
+          invisibility.maskQualityStable
+        }
+        colorMatchActive={
+          invisibility.status === 'active' &&
+          invisibility.runtimeStatus.colorMatchActive
+        }
+        temporalSmoothingActive={
+          invisibility.status === 'active' &&
+          invisibility.temporalSmoothingEnabled
+        }
+        backgroundFrames={backgroundCapture.metadata?.frameCount ?? 0}
       />
 
       <BackgroundCaptureControls
@@ -179,14 +263,48 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
         countdown={backgroundCapture.countdown}
         metadata={backgroundCapture.metadata}
         message={backgroundCapture.message}
+        framesCaptured={backgroundCapture.framesCaptured}
+        totalFrames={backgroundCapture.totalFrames}
         backgroundCanvasRef={backgroundCapture.backgroundCanvasRef}
         sceneClear={backgroundCapture.sceneClear}
         personCoverage={personSegmentation.personCoverage}
         canCapture={backgroundCapture.canCapture}
         isCapturing={backgroundCapture.isCapturing}
-        onCapture={backgroundCapture.startCapture}
+        onCapture={handleCaptureBackground}
         onCancel={backgroundCapture.cancelCapture}
-        onClear={backgroundCapture.clearBackground}
+        onClear={handleClearBackground}
+      />
+
+      <InvisibilityControls
+        status={invisibility.status}
+        isAvailable={invisibility.isAvailable}
+        isEnabled={invisibility.isEnabled}
+        showOriginalFrame={invisibility.showOriginalFrame}
+        showHandOverlay={invisibility.showHandOverlay}
+        validationError={invisibility.validationError}
+        qualityWarning={invisibility.qualityWarning}
+        onToggleInvisible={handleToggleInvisible}
+        onShowOriginalFrameChange={invisibility.setShowOriginalFrame}
+        onShowHandOverlayChange={invisibility.setShowHandOverlay}
+      />
+
+      <InvisibilityDebugPanel
+        debugView={invisibility.debugView}
+        rawMaskActive={personSegmentation.debugMode === 'mask'}
+        featheringEnabled={invisibility.featheringEnabled}
+        temporalSmoothingEnabled={invisibility.temporalSmoothingEnabled}
+        colorMatchingEnabled={invisibility.colorMatchingEnabled}
+        runtimeStatus={invisibility.runtimeStatus}
+        backgroundFrames={backgroundCapture.metadata?.frameCount ?? 0}
+        exposureControlSupported={cameraCapabilities.exposureControl}
+        whiteBalanceControlSupported={cameraCapabilities.whiteBalanceControl}
+        focusControlSupported={cameraCapabilities.focusControl}
+        qualityWarning={invisibility.qualityWarning}
+        onDebugViewChange={handleInvisibilityDebugView}
+        onRawMask={handleRawMaskDebug}
+        onFeatheringChange={invisibility.setFeatheringEnabled}
+        onTemporalSmoothingChange={invisibility.setTemporalSmoothingEnabled}
+        onColorMatchingChange={invisibility.setColorMatchingEnabled}
       />
 
       <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

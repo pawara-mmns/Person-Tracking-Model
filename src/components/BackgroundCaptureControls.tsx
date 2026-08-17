@@ -10,6 +10,8 @@ interface BackgroundCaptureControlsProps {
   countdown: number | null
   metadata: CapturedBackgroundMetadata | null
   message: string | null
+  framesCaptured: number
+  totalFrames: number
   backgroundCanvasRef: RefObject<HTMLCanvasElement | null>
   sceneClear: boolean
   personCoverage: number
@@ -34,6 +36,8 @@ export function BackgroundCaptureControls({
   countdown,
   metadata,
   message,
+  framesCaptured,
+  totalFrames,
   backgroundCanvasRef,
   sceneClear,
   personCoverage,
@@ -112,9 +116,21 @@ export function BackgroundCaptureControls({
               <p className="mt-2 text-xs text-zinc-400">Please move out of the camera frame.</p>
             </div>
           ) : (
-            <div>
+            <div className="w-full max-w-xs px-5">
               <span className="mx-auto block size-6 animate-spin rounded-full border-2 border-zinc-700 border-t-emerald-300" />
-              <p className="mt-3 text-xs text-zinc-300">Capturing and validating...</p>
+              <p className="mt-3 text-xs text-zinc-300">
+                {message ?? 'Capturing and validating...'}
+              </p>
+              {totalFrames > 0 && (
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                  <div
+                    className="h-full rounded-full bg-emerald-300 transition-[width]"
+                    style={{
+                      width: `${Math.min((framesCaptured / totalFrames) * 100, 100)}%`,
+                    }}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -145,6 +161,7 @@ export function BackgroundCaptureControls({
             <p className="font-medium text-zinc-300">Captured background</p>
             <p className="mt-1 font-mono">{metadata.width} × {metadata.height}</p>
             <p>{new Date(metadata.capturedAt).toLocaleTimeString()}</p>
+            <p>{metadata.frameCount} frames averaged</p>
             <p className="mt-2">The preview is mirrored for display; the stored clean plate remains in raw camera coordinates.</p>
           </div>
         </div>
@@ -187,4 +204,3 @@ export function BackgroundCaptureControls({
     </section>
   )
 }
-
