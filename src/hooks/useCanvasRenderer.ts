@@ -1,9 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
+import type { HandLandmarkerResult } from '@mediapipe/tasks-vision'
 import type { CanvasStatus, RenderMetrics } from '../types/canvas'
+import type { HandConnection } from '../types/handTracking'
+import { drawHandTracking } from '../utils/drawHandTracking'
 
 interface UseCanvasRendererOptions {
   stream: MediaStream | null
   isCameraActive: boolean
+  processVideoFrame?: (
+    video: HTMLVideoElement,
+    timestamp: number,
+  ) => HandLandmarkerResult | null
+  debugOverlayRef?: RefObject<boolean>
+  handConnectionsRef?: RefObject<readonly HandConnection[]>
 }
 
 const FPS_SAMPLE_INTERVAL_MS = 750
@@ -20,7 +30,13 @@ function clearCanvas(canvas: HTMLCanvasElement, context: CanvasRenderingContext2
   context.fillRect(0, 0, canvas.width, canvas.height)
 }
 
-export function useCanvasRenderer({ stream, isCameraActive }: UseCanvasRendererOptions) {
+export function useCanvasRenderer({
+  stream,
+  isCameraActive,
+  processVideoFrame,
+  debugOverlayRef,
+  handConnectionsRef,
+}: UseCanvasRendererOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | null>(null)
@@ -93,7 +109,18 @@ export function useCanvasRenderer({ stream, isCameraActive }: UseCanvasRendererO
         context.drawImage(video, 0, 0, canvas.width, canvas.height)
         context.restore()
 
-        // Future phases can draw landmarks, masks, and effects here.
+        const handResult = processVideoFrame?.(video, timestamp)
+        if (handResult && debugOverlayRef?.current) {
+          drawHandTracking(
+            context,
+            handResult,
+            handConnectionsRef?.current ?? [],
+            canvas.width,
+            canvas.height,
+          )
+        }
+
+        // Future phases can draw segmentation masks and effects here.
 
         totalFrames += 1
         framesInSample += 1
@@ -165,7 +192,13 @@ export function useCanvasRenderer({ stream, isCameraActive }: UseCanvasRendererO
       if (video.srcObject === stream) video.srcObject = null
       clearCanvas(canvas, context)
     }
-  }, [isCameraActive, stream])
+  }, [
+    debugOverlayRef,
+    handConnectionsRef,
+    isCameraActive,
+    processVideoFrame,
+    stream,
+  ])
 
   return {
     videoRef,
