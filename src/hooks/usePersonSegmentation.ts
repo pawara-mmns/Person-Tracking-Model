@@ -8,6 +8,7 @@ import {
 import type {
   PersonSegmentationMask,
   PersonSegmentationState,
+  PersonCoverageSample,
   SegmentationDebugMode,
   SegmentationWorkerResponse,
 } from '../types/segmentation'
@@ -32,6 +33,7 @@ export function usePersonSegmentation({
   const [debugMode, setDebugModeState] =
     useState<SegmentationDebugMode>('overlay')
   const latestMaskRef = useRef<PersonSegmentationMask | null>(null)
+  const coverageHistoryRef = useRef<PersonCoverageSample[]>([])
   const debugModeRef = useRef<SegmentationDebugMode>('overlay')
   const cameraActiveRef = useRef(isCameraActive)
   const modelReadyRef = useRef(false)
@@ -64,6 +66,7 @@ export function usePersonSegmentation({
           modelFailedRef.current = true
           inferenceInFlightRef.current = false
           latestMaskRef.current = null
+          coverageHistoryRef.current = []
           console.error('Unable to load person segmentation model:', message.error)
           setSegmentationState({
             status: 'error',
@@ -90,6 +93,16 @@ export function usePersonSegmentation({
             height: message.height,
             timestampMs: message.timestampMs,
             version: maskVersionRef.current,
+          }
+          coverageHistoryRef.current.push({
+            coverage: message.personCoverage,
+            timestampMs: performance.now(),
+          })
+          if (
+            coverageHistoryRef.current.length >
+            SEGMENTATION_CONFIG.coverageHistorySize
+          ) {
+            coverageHistoryRef.current.shift()
           }
           framesInSampleRef.current += 1
 
@@ -128,6 +141,7 @@ export function usePersonSegmentation({
           inferenceInFlightRef.current = false
           if (message.sessionId !== sessionIdRef.current) break
           latestMaskRef.current = null
+          coverageHistoryRef.current = []
           console.error('Person segmentation inference failed:', message.error)
           setSegmentationState((currentState) => ({
             ...currentState,
@@ -150,6 +164,7 @@ export function usePersonSegmentation({
     sessionIdRef.current += 1
     inferenceInFlightRef.current = false
     latestMaskRef.current = null
+    coverageHistoryRef.current = []
     lastVideoTimeRef.current = -1
     lastInferenceRequestRef.current = -Infinity
     framesInSampleRef.current = 0
@@ -231,8 +246,8 @@ export function usePersonSegmentation({
     debugMode,
     debugModeRef,
     latestMaskRef,
+    coverageHistoryRef,
     processVideoFrame,
     setDebugMode,
   }
 }
-
