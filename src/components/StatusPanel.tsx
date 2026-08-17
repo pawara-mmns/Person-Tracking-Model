@@ -7,6 +7,7 @@ import type {
   HandGestureMap,
 } from '../types/gesture'
 import type { HandTrackingStatus } from '../types/handTracking'
+import type { SegmentationStatus } from '../types/segmentation'
 import { formatGestureName } from '../utils/gestureRecognition'
 
 interface StatusPanelProps {
@@ -18,6 +19,10 @@ interface StatusPanelProps {
   aiFps: number
   gestures: HandGestureMap
   showGestureDebug: boolean
+  segmentationStatus: SegmentationStatus
+  segmentationFps: number
+  averagePersonConfidence: number
+  personCoverage: number
 }
 
 const CAMERA_LABELS: Record<CameraStatus, string> = {
@@ -37,6 +42,13 @@ const CANVAS_LABELS: Record<CanvasStatus, string> = {
 }
 
 const HAND_TRACKING_LABELS: Record<HandTrackingStatus, string> = {
+  loading: 'Loading',
+  ready: 'Ready',
+  active: 'Active',
+  error: 'Error',
+}
+
+const SEGMENTATION_LABELS: Record<SegmentationStatus, string> = {
   loading: 'Loading',
   ready: 'Ready',
   active: 'Active',
@@ -120,9 +132,14 @@ export function StatusPanel({
   aiFps,
   gestures,
   showGestureDebug,
+  segmentationStatus,
+  segmentationFps,
+  averagePersonConfidence,
+  personCoverage,
 }: StatusPanelProps) {
   const isRendering = canvasStatus === 'rendering'
   const isHandTracking = handTrackingStatus === 'active'
+  const isSegmenting = segmentationStatus === 'active'
 
   return (
     <div className="mt-4">
@@ -166,9 +183,11 @@ export function StatusPanel({
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 lg:block">
-        <span className="text-zinc-500">Segmentation</span>
+        <span className="text-zinc-500">Person segmentation</span>
         <div className="lg:mt-1.5">
-          <StatusValue>Not enabled</StatusValue>
+          <StatusValue active={segmentationStatus === 'ready' || isSegmenting}>
+            {SEGMENTATION_LABELS[segmentationStatus]}
+          </StatusValue>
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 lg:block">
@@ -183,6 +202,36 @@ export function StatusPanel({
                   ? 'Ready'
                   : 'Active'}
           </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Segmentation rate</span>
+        <div className="font-mono lg:mt-1.5">
+          <StatusValue active={isSegmenting}>
+            {isSegmenting ? `${segmentationFps} FPS` : '-- FPS'}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Person confidence</span>
+        <div className="font-mono lg:mt-1.5">
+          <StatusValue active={averagePersonConfidence > 0}>
+            {isSegmenting ? `${Math.round(averagePersonConfidence * 100)}%` : '--'}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Mask coverage</span>
+        <div className="font-mono lg:mt-1.5">
+          <StatusValue active={personCoverage > 0}>
+            {isSegmenting ? `${Math.round(personCoverage * 100)}%` : '--'}
+          </StatusValue>
+        </div>
+      </div>
+      <div className="flex items-center justify-between gap-4 lg:block">
+        <span className="text-zinc-500">Background capture</span>
+        <div className="lg:mt-1.5">
+          <StatusValue>Not enabled</StatusValue>
         </div>
       </div>
       <div className="flex items-center justify-between gap-4 lg:block">
