@@ -4,7 +4,12 @@ import type { HandLandmarkerResult } from '@mediapipe/tasks-vision'
 import type { CanvasStatus, RenderMetrics } from '../types/canvas'
 import type { HandConnection } from '../types/handTracking'
 import type { HandGestureMap } from '../types/gesture'
+import type {
+  PersonSegmentationMask,
+  SegmentationDebugMode,
+} from '../types/segmentation'
 import { drawHandTracking } from '../utils/drawHandTracking'
+import { PersonMaskRenderer } from '../utils/drawPersonSegmentation'
 
 interface UseCanvasRendererOptions {
   stream: MediaStream | null
@@ -16,6 +21,12 @@ interface UseCanvasRendererOptions {
   debugOverlayRef?: RefObject<boolean>
   handConnectionsRef?: RefObject<readonly HandConnection[]>
   gesturesRef?: RefObject<HandGestureMap>
+  processSegmentationFrame?: (
+    video: HTMLVideoElement,
+    timestamp: number,
+  ) => void
+  segmentationMaskRef?: RefObject<PersonSegmentationMask | null>
+  segmentationDebugModeRef?: RefObject<SegmentationDebugMode>
 }
 
 const FPS_SAMPLE_INTERVAL_MS = 750
@@ -39,10 +50,14 @@ export function useCanvasRenderer({
   debugOverlayRef,
   handConnectionsRef,
   gesturesRef,
+  processSegmentationFrame,
+  segmentationMaskRef,
+  segmentationDebugModeRef,
 }: UseCanvasRendererOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const animationFrameRef = useRef<number | null>(null)
+  const personMaskRendererRef = useRef<PersonMaskRenderer | null>(null)
   const [canvasStatus, setCanvasStatus] = useState<CanvasStatus>('idle')
   const [metrics, setMetrics] = useState<RenderMetrics>(INITIAL_METRICS)
 
@@ -68,11 +83,14 @@ export function useCanvasRenderer({
     }
 
     clearCanvas(canvas, context)
+    personMaskRendererRef.current ??= new PersonMaskRenderer()
+    const personMaskRenderer = personMaskRendererRef.current
     setMetrics(INITIAL_METRICS)
 
     if (!stream || !isCameraActive) {
       video.pause()
       video.srcObject = null
+      personMaskRenderer.clear()
       setCanvasStatus('idle')
       return
     }
@@ -113,6 +131,15 @@ export function useCanvasRenderer({
         context.restore()
 
         const handResult = processVideoFrame?.(video, timestamp)
+        processSegmentationFrame?.(video, timestamp)
+        personMaskRenderer.draw(
+          context,
+          segmentationMaskRef?.current ?? null,
+          segmentationDebugModeRef?.current ?? 'off',
+          canvas.width,
+          canvas.height,
+        )
+
         if (handResult) {
           drawHandTracking(
             context,
@@ -196,6 +223,7 @@ export function useCanvasRenderer({
       video.pause()
       if (video.srcObject === stream) video.srcObject = null
       clearCanvas(canvas, context)
+      personMaskRenderer.clear()
     }
   }, [
     debugOverlayRef,
@@ -203,6 +231,9 @@ export function useCanvasRenderer({
     handConnectionsRef,
     isCameraActive,
     processVideoFrame,
+    processSegmentationFrame,
+    segmentationDebugModeRef,
+    segmentationMaskRef,
     stream,
   ])
 

@@ -1,8 +1,10 @@
 import { useCanvasRenderer } from '../hooks/useCanvasRenderer'
 import { useHandTracking } from '../hooks/useHandTracking'
+import { usePersonSegmentation } from '../hooks/usePersonSegmentation'
 import type { CameraStatus } from '../types/camera'
 import type { CanvasStatus } from '../types/canvas'
 import { StatusPanel } from './StatusPanel'
+import { SegmentationControls } from './SegmentationControls'
 
 interface CameraCanvasProps {
   stream: MediaStream | null
@@ -56,6 +58,9 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
   const handTracking = useHandTracking({
     isCameraActive: cameraStatus === 'active',
   })
+  const personSegmentation = usePersonSegmentation({
+    isCameraActive: cameraStatus === 'active',
+  })
   const { videoRef, canvasRef, canvasStatus, metrics } = useCanvasRenderer({
     stream,
     isCameraActive: cameraStatus === 'active',
@@ -63,6 +68,9 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
     debugOverlayRef: handTracking.debugOverlayRef,
     handConnectionsRef: handTracking.handConnectionsRef,
     gesturesRef: handTracking.gesturesRef,
+    processSegmentationFrame: personSegmentation.processVideoFrame,
+    segmentationMaskRef: personSegmentation.latestMaskRef,
+    segmentationDebugModeRef: personSegmentation.debugModeRef,
   })
   const isRendering = canvasStatus === 'rendering'
   const placeholder = getPlaceholder(cameraStatus, canvasStatus, error)
@@ -145,28 +153,45 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
         aiFps={handTracking.aiFps}
         gestures={handTracking.gestures}
         showGestureDebug={handTracking.debugOverlay}
+        segmentationStatus={personSegmentation.status}
+        segmentationFps={personSegmentation.segmentationFps}
+        averagePersonConfidence={personSegmentation.averagePersonConfidence}
+        personCoverage={personSegmentation.personCoverage}
       />
 
-      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="mt-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <p className="text-xs leading-5 text-zinc-600">
           AI runs locally in your browser. Camera frames are not uploaded.
         </p>
-        <button
-          type="button"
-          aria-pressed={handTracking.debugOverlay}
-          onClick={() => handTracking.setDebugOverlay(!handTracking.debugOverlay)}
-          className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/8 bg-white/3 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-white/15 hover:text-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
-        >
-          <span
-            className={`size-1.5 rounded-full ${handTracking.debugOverlay ? 'bg-teal-300' : 'bg-zinc-600'}`}
+        <div className="flex flex-wrap gap-2">
+          <SegmentationControls
+            mode={personSegmentation.debugMode}
+            disabled={personSegmentation.status === 'loading' || personSegmentation.status === 'error'}
+            onModeChange={personSegmentation.setDebugMode}
           />
-          Finger debug: {handTracking.debugOverlay ? 'On' : 'Off'}
-        </button>
+          <button
+            type="button"
+            aria-pressed={handTracking.debugOverlay}
+            onClick={() => handTracking.setDebugOverlay(!handTracking.debugOverlay)}
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/8 bg-white/3 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-white/15 hover:text-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+          >
+            <span
+              className={`size-1.5 rounded-full ${handTracking.debugOverlay ? 'bg-teal-300' : 'bg-zinc-600'}`}
+            />
+            Finger debug: {handTracking.debugOverlay ? 'On' : 'Off'}
+          </button>
+        </div>
       </div>
 
       {handTracking.error && (
         <div className="mt-3 rounded-xl border border-rose-400/15 bg-rose-400/7 px-4 py-3 text-xs leading-5 text-rose-100" role="alert">
           {handTracking.error}
+        </div>
+      )}
+
+      {personSegmentation.error && (
+        <div className="mt-3 rounded-xl border border-rose-400/15 bg-rose-400/7 px-4 py-3 text-xs leading-5 text-rose-100" role="alert">
+          {personSegmentation.error}
         </div>
       )}
     </>
