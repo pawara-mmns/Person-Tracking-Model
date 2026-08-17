@@ -3,6 +3,7 @@ import type { RefObject } from 'react'
 import type { HandLandmarkerResult } from '@mediapipe/tasks-vision'
 import type { CanvasStatus, RenderMetrics } from '../types/canvas'
 import type { HandConnection } from '../types/handTracking'
+import type { HandGestureMap } from '../types/gesture'
 import { drawHandTracking } from '../utils/drawHandTracking'
 
 interface UseCanvasRendererOptions {
@@ -14,6 +15,7 @@ interface UseCanvasRendererOptions {
   ) => HandLandmarkerResult | null
   debugOverlayRef?: RefObject<boolean>
   handConnectionsRef?: RefObject<readonly HandConnection[]>
+  gesturesRef?: RefObject<HandGestureMap>
 }
 
 const FPS_SAMPLE_INTERVAL_MS = 750
@@ -36,6 +38,7 @@ export function useCanvasRenderer({
   processVideoFrame,
   debugOverlayRef,
   handConnectionsRef,
+  gesturesRef,
 }: UseCanvasRendererOptions) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -110,11 +113,13 @@ export function useCanvasRenderer({
         context.restore()
 
         const handResult = processVideoFrame?.(video, timestamp)
-        if (handResult && debugOverlayRef?.current) {
+        if (handResult) {
           drawHandTracking(
             context,
             handResult,
             handConnectionsRef?.current ?? [],
+            gesturesRef?.current ?? {},
+            debugOverlayRef?.current ?? false,
             canvas.width,
             canvas.height,
           )
@@ -194,6 +199,7 @@ export function useCanvasRenderer({
     }
   }, [
     debugOverlayRef,
+    gesturesRef,
     handConnectionsRef,
     isCameraActive,
     processVideoFrame,

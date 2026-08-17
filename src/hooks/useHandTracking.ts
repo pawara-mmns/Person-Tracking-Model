@@ -10,6 +10,7 @@ import type {
   HandTrackingState,
   HandWorkerResponse,
 } from '../types/handTracking'
+import { useGestureRecognition } from './useGestureRecognition'
 
 interface UseHandTrackingOptions {
   isCameraActive: boolean
@@ -23,11 +24,12 @@ const INITIAL_STATE: HandTrackingState = {
 }
 
 export function useHandTracking({ isCameraActive }: UseHandTrackingOptions) {
+  const gestureRecognition = useGestureRecognition({ enabled: isCameraActive })
   const [trackingState, setTrackingState] = useState<HandTrackingState>(INITIAL_STATE)
-  const [debugOverlay, setDebugOverlayState] = useState(true)
+  const [debugOverlay, setDebugOverlayState] = useState(false)
   const latestResultRef = useRef<HandLandmarkerResult | null>(null)
   const handConnectionsRef = useRef<readonly HandConnection[]>([])
-  const debugOverlayRef = useRef(true)
+  const debugOverlayRef = useRef(false)
   const cameraActiveRef = useRef(isCameraActive)
   const modelReadyRef = useRef(false)
   const modelFailedRef = useRef(false)
@@ -59,6 +61,7 @@ export function useHandTracking({ isCameraActive }: UseHandTrackingOptions) {
           modelFailedRef.current = true
           inferenceInFlightRef.current = false
           latestResultRef.current = null
+          gestureRecognition.clearGestures()
           console.error('Unable to load Hand Tracking model:', message.error)
           setTrackingState({
             status: 'error',
@@ -82,6 +85,7 @@ export function useHandTracking({ isCameraActive }: UseHandTrackingOptions) {
           aiFramesInSampleRef.current += 1
 
           const now = performance.now()
+          gestureRecognition.processGestureResult(message.result, now)
           const sampleDuration = now - aiSampleStartedAtRef.current
           const handsDetected = message.result.landmarks.length
 
@@ -122,6 +126,7 @@ export function useHandTracking({ isCameraActive }: UseHandTrackingOptions) {
           inferenceInFlightRef.current = false
           if (message.sessionId !== sessionIdRef.current) break
           latestResultRef.current = null
+          gestureRecognition.clearGestures()
           if (!detectionErrorActiveRef.current) {
             detectionErrorActiveRef.current = true
             console.error('Hand Tracking inference failed:', message.error)
@@ -141,7 +146,7 @@ export function useHandTracking({ isCameraActive }: UseHandTrackingOptions) {
 
     const unsubscribe = subscribeToHandTrackingWorker(handleWorkerMessage)
     return unsubscribe
-  }, [])
+  }, [gestureRecognition.clearGestures, gestureRecognition.processGestureResult])
 
   useEffect(() => {
     cameraActiveRef.current = isCameraActive
@@ -229,6 +234,8 @@ export function useHandTracking({ isCameraActive }: UseHandTrackingOptions) {
 
   return {
     ...trackingState,
+    gestures: gestureRecognition.gestures,
+    gesturesRef: gestureRecognition.gesturesRef,
     debugOverlay,
     debugOverlayRef,
     handConnectionsRef,
