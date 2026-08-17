@@ -6,6 +6,7 @@ const baseUrl = configuredBaseUrl.endsWith('/')
 export const SEGMENTATION_CONFIG = Object.freeze({
   targetFps: 15,
   metricsSampleIntervalMs: 750,
+  coverageHistorySize: 12,
   personMaskThreshold: 0.5,
   edgeFeather: 0.12,
   temporalCurrentFrameWeight: 0.68,

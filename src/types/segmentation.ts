@@ -10,6 +10,11 @@ export interface PersonSegmentationMask {
   version: number
 }
 
+export interface PersonCoverageSample {
+  coverage: number
+  timestampMs: number
+}
+
 export interface PersonSegmentationState {
   status: SegmentationStatus
   segmentationFps: number
@@ -43,4 +48,3 @@ export type SegmentationWorkerResponse =
     }
   | { type: 'SEGMENTATION_ERROR'; error: string; sessionId: number }
   | { type: 'DISPOSED' }
-
