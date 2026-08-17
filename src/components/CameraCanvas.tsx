@@ -1,4 +1,5 @@
 import { useCanvasRenderer } from '../hooks/useCanvasRenderer'
+import { useHandTracking } from '../hooks/useHandTracking'
 import type { CameraStatus } from '../types/camera'
 import type { CanvasStatus } from '../types/canvas'
 import { StatusPanel } from './StatusPanel'
@@ -52,9 +53,15 @@ function getPlaceholder(cameraStatus: CameraStatus, canvasStatus: CanvasStatus, 
 }
 
 export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps) {
+  const handTracking = useHandTracking({
+    isCameraActive: cameraStatus === 'active',
+  })
   const { videoRef, canvasRef, canvasStatus, metrics } = useCanvasRenderer({
     stream,
     isCameraActive: cameraStatus === 'active',
+    processVideoFrame: handTracking.processVideoFrame,
+    debugOverlayRef: handTracking.debugOverlayRef,
+    handConnectionsRef: handTracking.handConnectionsRef,
   })
   const isRendering = canvasStatus === 'rendering'
   const placeholder = getPlaceholder(cameraStatus, canvasStatus, error)
@@ -97,19 +104,68 @@ export function CameraCanvas({ stream, cameraStatus, error }: CameraCanvasProps)
         )}
 
         {isRendering && (
-          <div className="pointer-events-none absolute inset-x-4 top-4 flex items-center justify-between">
-            <div className="flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-              <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
-              Canvas live
+          <>
+            <div className="pointer-events-none absolute inset-x-4 top-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-white backdrop-blur-md">
+                <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]" />
+                Canvas live
+              </div>
+              <div className="rounded-full bg-black/55 px-3 py-1.5 font-mono text-[11px] font-medium text-zinc-100 backdrop-blur-md">
+                {metrics.fps} FPS
+              </div>
             </div>
-            <div className="rounded-full bg-black/55 px-3 py-1.5 font-mono text-[11px] font-medium text-zinc-100 backdrop-blur-md">
-              {metrics.fps} FPS
+
+            <div className="pointer-events-none absolute bottom-4 left-4 flex items-center gap-2 rounded-full bg-black/55 px-3 py-1.5 text-[11px] font-medium text-zinc-200 backdrop-blur-md">
+              <span
+                className={`size-1.5 rounded-full ${
+                  handTracking.status === 'error'
+                    ? 'bg-rose-400'
+                    : handTracking.status === 'loading'
+                      ? 'animate-pulse bg-amber-400'
+                      : 'bg-teal-300'
+                }`}
+              />
+              {handTracking.status === 'loading'
+                ? 'Loading Hand Tracking AI...'
+                : handTracking.status === 'error'
+                  ? 'Hand Tracking unavailable'
+                  : `${handTracking.handsDetected} hand${handTracking.handsDetected === 1 ? '' : 's'} detected`}
             </div>
-          </div>
+          </>
         )}
       </div>
 
-      <StatusPanel cameraStatus={cameraStatus} canvasStatus={canvasStatus} metrics={metrics} />
+      <StatusPanel
+        cameraStatus={cameraStatus}
+        canvasStatus={canvasStatus}
+        metrics={metrics}
+        handTrackingStatus={handTracking.status}
+        handsDetected={handTracking.handsDetected}
+        aiFps={handTracking.aiFps}
+      />
+
+      <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-5 text-zinc-600">
+          AI runs locally in your browser. Camera frames are not uploaded.
+        </p>
+        <button
+          type="button"
+          aria-pressed={handTracking.debugOverlay}
+          onClick={() => handTracking.setDebugOverlay(!handTracking.debugOverlay)}
+          className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/8 bg-white/3 px-3 py-2 text-xs font-medium text-zinc-400 transition hover:border-white/15 hover:text-zinc-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-300"
+        >
+          <span
+            className={`size-1.5 rounded-full ${handTracking.debugOverlay ? 'bg-teal-300' : 'bg-zinc-600'}`}
+          />
+          Debug overlay: {handTracking.debugOverlay ? 'On' : 'Off'}
+        </button>
+      </div>
+
+      {handTracking.error && (
+        <div className="mt-3 rounded-xl border border-rose-400/15 bg-rose-400/7 px-4 py-3 text-xs leading-5 text-rose-100" role="alert">
+          {handTracking.error}
+        </div>
+      )}
     </>
   )
 }
