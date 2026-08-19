@@ -33,7 +33,7 @@ export function Home() {
             </div>
           </div>
           <span className="hidden rounded-full border border-white/8 bg-white/3 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400 sm:block">
-            Phase 06
+            Phase 07.1
           </span>
         </header>
 
@@ -42,7 +42,7 @@ export function Home() {
             <div>
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-emerald-300/80">AI vision output</p>
               <h2 id="camera-heading" className="text-2xl font-semibold tracking-[-0.025em] text-white sm:text-3xl">
-                Clean background capture
+                Enhanced invisibility compositing
               </h2>
             </div>
             <CameraStatus status={status} />
@@ -70,11 +70,11 @@ export function Home() {
         <footer className="grid gap-5 border-t border-white/8 pt-7 sm:grid-cols-[1fr_auto] sm:items-end">
           <div>
             <div className="flex items-center gap-2.5">
-              <span className="font-mono text-xs text-emerald-300">06</span>
-              <h2 className="text-sm font-semibold text-zinc-200">Validated clean-plate capture</h2>
+              <span className="font-mono text-xs text-emerald-300">07.1</span>
+              <h2 className="text-sm font-semibold text-zinc-200">Real-time quality enhancement</h2>
             </div>
             <p className="mt-2 max-w-lg text-sm leading-6 text-zinc-500">
-              Segmentation verifies an empty scene before storing a raw, full-resolution background plate.
+              Adaptive masks, averaged clean plates, and color matching reduce visible silhouettes and edge artifacts.
             </p>
           </div>
           <div className="flex flex-col gap-2 text-xs text-zinc-500 sm:items-end">
@@ -84,7 +84,7 @@ export function Home() {
             </div>
             <div className="flex items-center gap-2">
               <span className="size-1.5 rounded-full bg-zinc-600" />
-              Invisibility compositing: Not enabled
+              Invisibility: Manual control
             </div>
           </div>
         </footer>
