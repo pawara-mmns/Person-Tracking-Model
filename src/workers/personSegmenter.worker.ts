@@ -16,7 +16,7 @@ import { processPersonConfidenceMask } from '../utils/processPersonMask'
 
 const workerScope = self as unknown as DedicatedWorkerGlobalScope
 let imageSegmenter: ImageSegmenter | null = null
-let previousSmoothedMask: Float32Array | null = null
+let reusableConfidenceBuffer: Float32Array | null = null
 
 function postResponse(message: SegmentationWorkerResponse, transfer?: Transferable[]) {
   workerScope.postMessage(message, transfer ?? [])
@@ -49,9 +49,9 @@ function createPersonMask(result: ImageSegmenterResult) {
 
   const processedMask = processPersonConfidenceMask(
     currentMask,
-    previousSmoothedMask,
+    reusableConfidenceBuffer,
   )
-  previousSmoothedMask = processedMask.smoothedMask
+  reusableConfidenceBuffer = processedMask.confidenceBuffer
 
   return {
     mask: processedMask.mask,
@@ -130,14 +130,14 @@ workerScope.onmessage = (event: MessageEvent<SegmentationWorkerRequest>) => {
   if (message.type === 'DISPOSE') {
     imageSegmenter?.close()
     imageSegmenter = null
-    previousSmoothedMask = null
+    reusableConfidenceBuffer = null
     postResponse({ type: 'DISPOSED' })
     workerScope.close()
     return
   }
 
   if (message.type === 'RESET') {
-    previousSmoothedMask = null
+    reusableConfidenceBuffer = null
     return
   }
 

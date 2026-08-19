@@ -10,6 +10,7 @@ export interface CapturedBackgroundMetadata {
   width: number
   height: number
   capturedAt: number
+  frameCount: number
 }
 
 export interface BackgroundCaptureState {
@@ -17,5 +18,6 @@ export interface BackgroundCaptureState {
   countdown: number | null
   metadata: CapturedBackgroundMetadata | null
   message: string | null
+  framesCaptured: number
+  totalFrames: number
 }
-
